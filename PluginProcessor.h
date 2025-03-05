@@ -2,6 +2,8 @@
 
 #include <JuceHeader.h>
 #include "FFTProcessor.h"
+#include "Library.h"
+
 
 
 
@@ -45,9 +47,10 @@ public:
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
 
+    void setBuffer(std::unique_ptr<juce::AudioBuffer<float>> buffer);
+
     juce::AudioProcessorValueTreeState apvts;
 
-    void setBuffer(std::unique_ptr<juce::AudioBuffer<float>> buffer);
 
     // juce::AudioProcessorParameter* getBypassParameter() const override;
     // juce::AudioProcessorValueTreeState apvts { *this, nullptr, "Parameters", createParameterLayout()};
@@ -55,8 +58,13 @@ public:
 
 private:
     // two FFT processors for stereo 
-    // std::unique_ptr
+    std::unique_ptr<ky::ClipPlayer> player;
+
+    ky::Ramp ramp;
+
     FFTProcessor fft[2];
+
+    
 
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AudioPluginAudioProcessor)

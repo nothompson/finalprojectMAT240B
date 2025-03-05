@@ -44,7 +44,7 @@ AudioPluginAudioProcessor::AudioPluginAudioProcessor()
                        .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
                      #endif
                        ),
-                       apvts(*this, nullptr, "Parameters", parameters())
+    apvts(*this, nullptr, "Parameters", parameters())
 {
 }
 
@@ -124,6 +124,8 @@ void AudioPluginAudioProcessor::prepareToPlay (double sampleRate, int samplesPer
     // initialisation that you need..
     juce::ignoreUnused (sampleRate, samplesPerBlock);
 
+    ky::setPlaybackRate(static_cast<float>(getSampleRate()));
+
     setLatencySamples(fft[0].getLatencyInSamples());
 
     // reset fftprocessors internal state 
@@ -182,12 +184,39 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     // float* channelL = buffer.getWritePointer(0);
     // float* channelR = buffer.getWritePointer(1);
+    ramp.frequency(0.3f);
+    for (int i = 0; i < buffer.getNumSamples(); ++i){
+
+        float sample = player ? player -> operator()(ramp()): 0; 
+
+        buffer.addSample(0, i, sample);
+        buffer.addSample(1, i, sample);
+    }
 
     // process block all at once. processBlock() still calls processSample()
+
     for (int channel = 0; channel < totalNumInputChannels; ++channel) {
         auto* channelData = buffer.getWritePointer(channel);
         fft[channel].processBlock(channelData, numSamples);
     }
+
+    juce::dsp::AudioBlock<float>block(buffer);
+
+}
+
+void AudioPluginAudioProcessor::setBuffer(
+    std::unique_ptr<juce::AudioBuffer<float>>buffer){
+    juce::ignoreUnused(buffer);
+
+    auto b = std::make_unique<ky::ClipPlayer>();
+    for (int i = 0; i < buffer -> getNumSamples(); ++i){
+        if(buffer -> getNumChannels() == 2){
+            b -> addSample(buffer -> getSample(0,i) / 2 + buffer-> getSample(1,i)/2);
+        } else {
+            b ->addSample(buffer->getSample(0,i));
+        }
+    }
+    player = std::move(b);
 }
 
 //==============================================================================
@@ -207,7 +236,10 @@ void AudioPluginAudioProcessor::getStateInformation (juce::MemoryBlock& destData
     // You should use this method to store your parameters in the memory block.
     // You could do that either as raw data, or use the XML or ValueTree classes
     // as intermediaries to make it easy to save and load complex data.
-    juce::ignoreUnused (destData);
+    // juce::ignoreUnused (destData);
+    auto state = apvts.copyState();
+    std::unique_ptr<juce::XmlElement> xml(state.createXml());
+    copyXmlToBinary(*xml,destData);
 
     // copyXmlToBinary(*apvts.copyState().createXml(), destData);
 }
@@ -221,6 +253,13 @@ void AudioPluginAudioProcessor::setStateInformation (const void* data, int sizeI
     // if(xml.get()!=nullptr && xml->hasTagName(apvts.state.getType())){
     //     apvts.replaceState(juce::ValueTree::fromXml(*xml));
     // }
+    std::unique_ptr<juce::XmlElement>xmlState(
+        getXmlFromBinary(data,sizeInBytes));
+
+    if(xmlState.get()!=nullptr)
+        if(xmlState->hasTagName(apvts.state.getType()))
+            apvts.replaceState(juce::ValueTree::fromXml(*xmlState));
+
 }
 
 // juce::AudioProcessorValueTreeState::ParameterLayout AudioPluginAudioProcessor::createParameterLayout(){
@@ -240,9 +279,3 @@ juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
     return new AudioPluginAudioProcessor();
 }
-
-// void AudioPluginAudioProcessor::setBuffer(
-//     std::unique_ptr<juce::AudioBuffer<float>>buffer){
-    
-//         auto b = std::make_unique<ky::ClipPlayer>
-//     }

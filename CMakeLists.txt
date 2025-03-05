@@ -72,6 +72,7 @@ target_sources(AudioPluginExample
     PRIVATE
         PluginEditor.cpp
         PluginProcessor.cpp
+        Library.cpp
         FFTProcessor.cpp)
 
 # `target_compile_definitions` adds some preprocessor definitions to our target. In a Projucer

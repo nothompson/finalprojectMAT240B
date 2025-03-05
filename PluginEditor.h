@@ -24,8 +24,8 @@ private:
     juce::Slider rateSlider;
     juce::TextButton openButton;
     
-    std::unique_ptr<juce::FileChooser> chooser;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>> attachment;
+    std::unique_ptr<juce::FileChooser> chooser;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AudioPluginAudioProcessorEditor)
 };
