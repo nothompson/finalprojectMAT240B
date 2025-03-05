@@ -22,7 +22,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout parameters() {
         ParameterID {"distortion", 1},
         "Distortion",
         0.0,
-        1.0,
+        0.2,
         0.0));
 
     parameter_list.push_back(std::make_unique<juce::AudioParameterFloat>(
@@ -142,27 +142,27 @@ void AudioPluginAudioProcessor::releaseResources()
 
 bool AudioPluginAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
-//   #if JucePlugin_IsMidiEffect
-//     juce::ignoreUnused (layouts);
-//     return true;
-//   #else
-//     // This is the place where you check if the layout is supported.
-//     // In this template code we only support mono or stereo.
-//     // Some plugin hosts, such as certain GarageBand versions, will only
-//     // load plugins that support stereo bus layouts.
-//     if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::mono()
-//      && layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
-//         return false;
+  #if JucePlugin_IsMidiEffect
+    juce::ignoreUnused (layouts);
+    return true;
+  #else
+    // This is the place where you check if the layout is supported.
+    // In this template code we only support mono or stereo.
+    // Some plugin hosts, such as certain GarageBand versions, will only
+    // load plugins that support stereo bus layouts.
+    if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::mono()
+     && layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
+        return false;
 
-//     // This checks if the input layout matches the output layout
-//    #if ! JucePlugin_IsSynth
-//     if (layouts.getMainOutputChannelSet() != layouts.getMainInputChannelSet())
-//         return false;
-//    #endif
+    // This checks if the input layout matches the output layout
+   #if ! JucePlugin_IsSynth
+    if (layouts.getMainOutputChannelSet() != layouts.getMainInputChannelSet())
+        return false;
+   #endif
 
-//     return true;
-//   #endif
-    return layouts.getMainOutputChannelSet() == juce::AudioChannelSet::stereo();
+    return true;
+  #endif
+    // return layouts.getMainOutputChannelSet() == juce::AudioChannelSet::stereo();
 }
 
 void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
@@ -184,23 +184,38 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     // float* channelL = buffer.getWritePointer(0);
     // float* channelR = buffer.getWritePointer(1);
-    ramp.frequency(0.3f);
-    for (int i = 0; i < buffer.getNumSamples(); ++i){
+    // float r = apvts.getParameter("distortion")->getValue();
+
+    ramp.frequency(0.3);
+    for (int i = 0; i < numSamples; ++i){
 
         float sample = player ? player -> operator()(ramp()): 0; 
 
         buffer.addSample(0, i, sample);
         buffer.addSample(1, i, sample);
+
+    
     }
+    
+    float v = apvts.getParameter("rate")->getValue();
+
+
+
+    buffer.applyGain(v);
+
+    // juce::dsp::AudioBlock<float>block(buffer);
+
 
     // process block all at once. processBlock() still calls processSample()
 
-    for (int channel = 0; channel < totalNumInputChannels; ++channel) {
-        auto* channelData = buffer.getWritePointer(channel);
-        fft[channel].processBlock(channelData, numSamples);
-    }
+    // for (int channel = 0; channel < totalNumInputChannels; ++channel) {
+    //     auto* channelData = buffer.getWritePointer(channel);
+    //     fft[channel].processBlock(channelData, numSamples);
+    // }
 
-    juce::dsp::AudioBlock<float>block(buffer);
+    
+
+
 
 }
 

@@ -95,6 +95,7 @@ void FFTProcessor::processSpectrum(float* data, int numBins){
 
         // spectral processing algorithm here
         
+        phase *= float(i);
 
         // convert interleaved values back to complex number
         cdata[i] = std::polar(magnitute, phase);

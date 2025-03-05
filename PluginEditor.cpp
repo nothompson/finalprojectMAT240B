@@ -19,36 +19,7 @@ AudioPluginAudioProcessorEditor::AudioPluginAudioProcessorEditor (AudioPluginAud
     attachment.push_back(std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         processorRef.apvts, "rate", rateSlider));
 
-    openButton.setButtonText("select audio file");
-    openButton.onClick = [this](){
-        chooser = std::make_unique<juce::FileChooser>(
-            "select audio file",
-            juce::File::getSpecialLocation(File::userHomeDirectory), "*.wav");
-
-            chooser ->launchAsync(
-                FileBrowserComponent::openMode | FileBrowserComponent::canSelectFiles,
-                [this](const juce::FileChooser& c){
-                    File file(c.getResult());
-
-                    if (!file.exists()) return;
-
-                    juce::AudioFormatManager formatManager;
-                    formatManager.registerBasicFormats();
-                    std::unique_ptr<juce::AudioFormatReader> reader(
-                        formatManager.createReaderFor(file));
-                    if (reader == nullptr) return;
-
-                auto buffer = std::make_unique<juce::AudioBuffer<float>>(
-                    static_cast<int>(reader->numChannels),
-                    static_cast<int>(reader->lengthInSamples));
-
-                reader->read(buffer.get(), 0,
-                                static_cast<int>(reader->lengthInSamples), 0, true, true);
-
-                // processorRef.setBuffer(std::move(buffer));
-
-                });
-    };
+    
 
 
     addAndMakeVisible(gainSlider);
@@ -57,9 +28,39 @@ AudioPluginAudioProcessorEditor::AudioPluginAudioProcessorEditor (AudioPluginAud
     addAndMakeVisible(rateSlider);
     addAndMakeVisible(openButton);
 
-
-
-}
+    chooser = std::make_unique<juce::FileChooser>(
+        "Select a file to open...",
+        juce::File::getSpecialLocation(juce::File::userDesktopDirectory),
+        "*.wav;*.mp3;*.aif;*.flac");
+    openButton.setButtonText("select audio file");
+    openButton.onClick = [this] {
+      auto fn = [this](const juce::FileChooser& c) {
+        juce::File file = c.getResult();
+        if (!file.exists()) return;
+  
+        juce::AudioFormatManager formatManager;
+        formatManager.registerBasicFormats();
+        std::unique_ptr<juce::AudioFormatReader> reader(
+            formatManager.createReaderFor(file));
+        if (reader == nullptr) return;
+  
+        auto buffer = std::make_unique<juce::AudioBuffer<float>>(
+            static_cast<int>(reader->numChannels),
+            static_cast<int>(reader->lengthInSamples));
+  
+        reader->read(buffer.get(), 0, static_cast<int>(reader->lengthInSamples),
+                     0, true, true);
+  
+        // auto old = processorRef.buffer.exchange(buffer.release(),
+        // std::memory_order_acq_rel); if (old) delete old;
+        processorRef.setBuffer(std::move(buffer));
+      };
+  
+      chooser->launchAsync(juce::FileBrowserComponent::canSelectFiles, fn);
+    };
+  
+    addAndMakeVisible(openButton);
+  }
 
 AudioPluginAudioProcessorEditor::~AudioPluginAudioProcessorEditor()
 {
