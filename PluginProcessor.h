@@ -3,6 +3,10 @@
 #include <JuceHeader.h>
 #include "FFTProcessor.h"
 #include "Library.h"
+#include "LookAndFeel.h"
+#include "extraLookAndFeel.h"
+#include "myDial.h"
+#include "extraDial.h"
 
 
 

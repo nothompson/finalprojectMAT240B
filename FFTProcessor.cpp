@@ -8,7 +8,10 @@ FFTProcessor::FFTProcessor():
     // set normalization to false to avoid messing with gain
     window(fftSize + 1, juce::dsp::WindowingFunction<float>::WindowingMethod::hann, false)    
     {
+        previousPhases.resize(numBins, 0.0f);
+        phaseAccum.resize(numBins, 0.0f);
     }
+    
 
 void FFTProcessor::processBlock(float* data, int numSamples)
 {
@@ -84,21 +87,132 @@ void FFTProcessor::processFrame(){
     }
 }
 
-void FFTProcessor::processSpectrum(float* data, int numBins){
+void FFTProcessor::processSpectrum(float* data, int numBins)
+{
     // frequency domain has complex numbers, easier than dealing with interleaved real and imaginary
     auto* cdata = reinterpret_cast<std::complex<float>*>(data);
+    
+    // helpful constant
+    const float twoPi = juce::MathConstants<float>::twoPi;
+    
+    // phase reset parameters
+    // constexpr float phaseResetThreshold = 0.2f;  // turned into parameter
+    // constexpr float phaseResetLerpFactor = 0.5f;   // turned into parameter
+    
+    // make temporary buffers for analysis
+    std::vector<float> magnitudes(numBins, 0.0f);
+    std::vector<float> phases(numBins, 0.0f);
+    
+    // our "expected" phase of the next frame based on our fft and hop windows 
+    float expectedPhaseAdvance = twoPi * hopSize / static_cast<float>(fftSize);
+    
+    // compute magnitudes, phases, and update phase accumulators.
+    for (int i = 0; i < numBins; ++i)
+    {
+        // absolute value to get magnitudes 
+        float mag = std::abs(cdata[i]);
+        // arg is phase angle of complex number 
+        float ph = std::arg(cdata[i]);
 
-    for(int i = 0; i < numBins; ++i){
-        // deal with real and imaginary as magnitute and phase
-        float magnitute = std::abs(cdata[i]);
-        float phase = std::arg(cdata[i]);
-
-        // spectral processing algorithm here
+        // each mag and phase
+        magnitudes[i] = mag;
+        phases[i] = ph;
         
-        phase *= float(i);
+        // "current" (expected) frame compared to last frame
+        float expectedPhase = i * expectedPhaseAdvance;
+        float deltaPhase = ph - previousPhases[i] - expectedPhase;
+        
+        // unwrap phases from -pi - pi, get true frequency from phase shift
+        while (deltaPhase > juce::MathConstants<float>::pi)
+            deltaPhase -= twoPi;
+        while (deltaPhase < -juce::MathConstants<float>::pi)
+            deltaPhase += twoPi;
+        
+        // getting fundamental frequency of frame 
+        float instantFreq = expectedPhase + (deltaPhase / hopSize);
 
-        // convert interleaved values back to complex number
-        cdata[i] = std::polar(magnitute, phase);
+        // synthesis stage phase adding phase shift to avoid discontinuties and scaling to new pitch
+        float newPhase = phaseAccum[i] + instantFreq * hopSize * pitchShiftFactor;
+        
+        // ensure phase doesn't drift off
+        float phaseDiff = std::abs(newPhase - ph);
+        if (phaseDiff > phaseResetThreshold)
+        {
+            // gradually reinitialize the phase accumulator toward the current phase.
+            newPhase = phaseAccum[i] + phaseResetLerpFactor * (ph - phaseAccum[i]);
+        }
+        phaseAccum[i] = newPhase;
+        previousPhases[i] = ph;
+    }
+    
+    // peak detection, integer bins 
+    // each "peak" has an associated position in the bin, phase, and magnitude
+    struct Peak { int index; float phase; float mag; };
+    std::vector<Peak> peaks;
+    // const float peakThreshold = 0.1f;  // turned into parameter
+    for (int i = 1; i < numBins - 1; ++i)
+    {
+        if (magnitudes[i] > magnitudes[i - 1] &&
+            magnitudes[i] >= magnitudes[i + 1] &&
+            magnitudes[i] > peakThreshold)
+        {
+            // append to peak vector if magnitudes are high enough
+            peaks.push_back({ i, phaseAccum[i], magnitudes[i] });
+        }
+    }
+    
+    // resynthesis 
+    // create spectrum, initialize with zeroes
+    std::vector<std::complex<float>> peakSpectrum(numBins, std::complex<float>(0.0f, 0.0f));
+    // reference peak container 
+    for (auto& peak : peaks)
+    {
+        // map peaks to new bin (fractional before lerp)
+        float newIndexFloat = peak.index * pitchShiftFactor;
+        int lowerIndex = static_cast<int>(std::floor(newIndexFloat));
+        float frac = newIndexFloat - lowerIndex;
+        
+        // reconstruct our data including both magnitude and phase
+        std::complex<float> peakValue = std::polar(peak.mag, peak.phase);
+        
+        // lerping to distribute energy to nearby bins. can cause inharmonics, maybe look into cubic or other interpolation methods
+        if (lowerIndex < numBins)
+            peakSpectrum[lowerIndex] += peakValue * (1.0f - frac);
+        if (lowerIndex + 1 < numBins)
+            peakSpectrum[lowerIndex + 1] += peakValue * frac;
+    }
+    
+    // get residual spectrum, not peak based. try and maintain harmonics and noise of original spectrum
+    std::vector<std::complex<float>> residualSpectrum(numBins, std::complex<float>(0.0f, 0.0f));
+    for (int i = 0; i < numBins; ++i)
+    {
+        // use original FFT bin value.
+        std::complex<float> origValue = cdata[i];
+        float newIndexFloat = i * pitchShiftFactor;
+        int lowerIndex = static_cast<int>(std::floor(newIndexFloat));
+        float frac = newIndexFloat - lowerIndex;
+        
+        // lerp to to integer bins
+        if (lowerIndex < numBins)
+            residualSpectrum[lowerIndex] += origValue * (1.0f - frac);
+        if (lowerIndex + 1 < numBins)
+            residualSpectrum[lowerIndex + 1] += origValue * frac;
+    }
+    
+    // blend together the peaks and the spectral information
+    // constexpr float nonPeakBlendFactor = 0.2f; // made into parameter
+    std::vector<std::complex<float>> newSpectrum(numBins, std::complex<float>(0.0f, 0.0f));
+    for (int i = 0; i < numBins; ++i)
+    {
+        // lerp smoothing for blending two spectrums
+        newSpectrum[i] = (1.0f - nonPeakBlendFactor) * peakSpectrum[i] +
+                         nonPeakBlendFactor * residualSpectrum[i];
+    }
+    
+    // re synthesize and write back to cdata
+    for (int i = 0; i < numBins; ++i)
+    {
+        cdata[i] = newSpectrum[i];
     }
 }
 

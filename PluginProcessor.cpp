@@ -4,33 +4,40 @@
 juce::AudioProcessorValueTreeState::ParameterLayout parameters() {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> parameter_list;
 
+    parameter_list.push_back(std::make_unique<juce::AudioParameterInt>(
+        ParameterID { "shift",  1 },
+        "Shift",
+        -12,
+        12,
+        0));
+    
     parameter_list.push_back(std::make_unique<juce::AudioParameterFloat>(
-        ParameterID { "gain",  1 },
-        "Gain",
-        -60.0,
-        0.0,
-        -60.0));
+            ParameterID { "peak",  1 },
+            "Peak",
+            0.0,
+            1.0,
+            0.1));
 
-    parameter_list.push_back(std::make_unique<juce::AudioParameterFloat>(
-        ParameterID {"frequency", 1},
-        "Frequency",
-        0.0,
-        127.0,
-        60.0));
+     parameter_list.push_back(std::make_unique<juce::AudioParameterFloat>(
+            ParameterID { "reset",  1 },
+            "Reset",
+            0.0,
+            1.0,
+            0.2));
 
-    parameter_list.push_back(std::make_unique<juce::AudioParameterFloat>(
-        ParameterID {"distortion", 1},
-        "Distortion",
-        0.0,
-        0.2,
-        0.0));
+     parameter_list.push_back(std::make_unique<juce::AudioParameterFloat>(
+            ParameterID { "lerp",  1 },
+            "Lerp",
+            0.0,
+            1.0,
+            0.5));
 
-    parameter_list.push_back(std::make_unique<juce::AudioParameterFloat>(
-        ParameterID {"rate", 1},
-        "Rate",
-        0.0,
-        1.0,
-        0.0));
+     parameter_list.push_back(std::make_unique<juce::AudioParameterFloat>(
+            ParameterID { "blend",  1 },
+            "Blend",
+            0.0,
+            1.0,
+            0.2));
 
     return { parameter_list.begin(), parameter_list.end() };
 }
@@ -179,6 +186,21 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         buffer.clear(i, 0, numSamples);
     }
 
+    float semitoneShift = *apvts.getRawParameterValue("shift");
+
+    float pPeak = *apvts.getRawParameterValue("peak");
+    float pReset = *apvts.getRawParameterValue("reset");
+    float pLerp = *apvts.getRawParameterValue("lerp");
+    float pBlend = *apvts.getRawParameterValue("blend");
+    
+
+    // send semitones to conversion function in fft processor
+    fft[0].setSemitoneShift(semitoneShift);
+    fft[1].setSemitoneShift(semitoneShift);
+
+    fft[0].setParams(pPeak, pReset, pLerp, pBlend);
+    fft[1].setParams(pPeak, pReset, pLerp, pBlend);
+
     // parameter to toggle on and off for testing
     // bool bypassed = apvts.getRawParameterValue("Bypass")->load();
 
@@ -186,32 +208,27 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     // float* channelR = buffer.getWritePointer(1);
     // float r = apvts.getParameter("distortion")->getValue();
 
-    ramp.frequency(0.3);
-    for (int i = 0; i < numSamples; ++i){
+    // ramp.frequency(r);
+    // for (int i = 0; i < numSamples; ++i){
 
-        float sample = player ? player -> operator()(ramp()): 0; 
+    //     float sample = player ? player -> operator()(ramp()): 0; 
 
-        buffer.addSample(0, i, sample);
-        buffer.addSample(1, i, sample);
-
+    //     buffer.addSample(0, i, sample);
+    //     buffer.addSample(1, i, sample);
     
-    }
+    // }
     
-    float v = apvts.getParameter("rate")->getValue();
+    // float v = apvts.getParameter("rate")->getValue();
 
-
-
-    buffer.applyGain(v);
-
-    // juce::dsp::AudioBlock<float>block(buffer);
+    juce::dsp::AudioBlock<float>block(buffer);
 
 
     // process block all at once. processBlock() still calls processSample()
 
-    // for (int channel = 0; channel < totalNumInputChannels; ++channel) {
-    //     auto* channelData = buffer.getWritePointer(channel);
-    //     fft[channel].processBlock(channelData, numSamples);
-    // }
+    for (int channel = 0; channel < totalNumInputChannels; ++channel) {
+        auto* channelData = buffer.getWritePointer(channel);
+        fft[channel].processBlock(channelData, numSamples);
+    }
 
     
 

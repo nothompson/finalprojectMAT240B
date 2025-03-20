@@ -13,14 +13,35 @@ class FFTProcessor
         float processSample(float sample);
         void processBlock(float* data, int numSamples);
 
+        void setSemitoneShift(float semitones)
+        {
+            // cents to ratio = 2^(cents / 1200)
+            // -1200 = 0.5, 1200 = 2.0, 0 = 1,
+            pitchShiftFactor = std::pow(2.0f, semitones / 12.0f);
+        }
+
+        void setParams(float peak, float reset, float lerp, float blend)
+        {
+            peakThreshold = peak;
+            phaseResetThreshold = reset;
+            phaseResetLerpFactor = lerp;
+            nonPeakBlendFactor = blend;
+
+        }
+
+
+
+
     private:
 
         void processFrame();
 
         void processSpectrum(float* data, int numBins);
 
-        static constexpr int fftOrder = 10;
-        // 1024 samples ( 2^10)
+
+
+        static constexpr int fftOrder = 11;
+        // 2048 samples ( 2^11)
         static constexpr int fftSize = 1 << fftOrder; 
         // 513 bins 
         static constexpr int numBins = (fftSize / 2) + 1; 
@@ -29,7 +50,7 @@ class FFTProcessor
         // 256 sample hop size
         static constexpr int hopSize = fftSize / overlap;
 
-        static constexpr float windowCorrection = 2.0f/ 3.0f;
+        static constexpr float windowCorrection = 4.0f/ 3.0f;
 
         // need to get built-in JUCE objects. member variables of FFTProcessor
         juce::dsp::FFT fft;
@@ -49,6 +70,21 @@ class FFTProcessor
         // where the fft takes place
         // fft uses complex numbers, double the length since each complex is made up of two floats
         std::array<float,fftSize * 2>fftData;
+
+        // size of numBins
+        std::vector<float> previousPhases; 
+        std::vector<float> phaseAccum;     
+
+        float pitchShiftFactor { 1.0f };
+
+        float phaseResetThreshold { 0.2f };
+
+        float phaseResetLerpFactor { 0.5f };
+
+        float peakThreshold { 0.1f };
+
+        float nonPeakBlendFactor { 0.2f };
+
 
         
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(FFTProcessor)
